@@ -1,0 +1,113 @@
+const path = require('path');
+const fs = require('fs');
+const readline = require('readline');
+let data = {};
+
+async function loadDataByCSV(filePath) {
+    data = null;
+    const fileStream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    const rl = readline.createInterface({
+        input: fileStream,
+        crlfDelay: Infinity
+    });
+
+    for await (const line of rl) {
+        // Process each line here
+        const values = line.split(',');
+        const isHeader = data == null;
+        if (isHeader) data = { header: { groups: [], line: [] }, body: [] };
+        const body = [];
+        for (let i = 0; i < values.length; i++) {
+            let value = values[i].trim();
+
+            if (isHeader) {
+                let groupName = '';
+                if (value.includes('[') && value.includes(']')) {
+                    groupName = value.substring(value.indexOf('[') + 1, value.indexOf(']'));
+                    value = value.substring(value.indexOf(']') + 1);
+                }
+                data.header.line.push(value);
+
+                let g = data.header.groups[data.header.groups.length - 1];
+                if(!g || g.name != groupName) {
+                    g = { name: groupName, count: 0 }
+                    data.header.groups.push(g);
+                }
+                g.count++;
+                continue;
+            }
+
+            body.push(value);
+        }
+
+        data.body.push(body);
+    }
+}
+
+function getPlugin(plugin) {
+
+    plugin.init = (trayMenu, mainMenu) => {
+        plugin.log('YT init');
+    };
+
+    plugin.beforePageLoad = () => {
+        plugin.log('YT beforePageLoad');
+    };
+
+    plugin.onPageLoad = (page) => {
+
+        const csvFolder = path.join(__dirname, 'data');
+
+        // page.addEventListener('change', '#file-csv', (value) => {
+        //     plugin.log(value);
+        // });
+
+        loadDataByCSV(path.join(__dirname, 'data.csv')).then(() => {
+            page.loadHtml('#table-header', {
+                fileOrHtml: [
+                    {
+                        tag: 'tr', children: [
+                            ...data.header.groups.map(x => { return { tag: 'th', colspan: x.count, text: x.name }; }),
+                        ]
+                    },
+                    {
+                        tag: 'tr', children: [
+                            ...data.header.line.map(x => { return { tag: 'th', text: x }; }),
+                        ]
+                    },
+                ]
+            });
+            page.loadHtml('#table-body', {
+                fileOrHtml: [
+                    ...data.body.map(line => {
+                        const ytid = line[data.header.line.indexOf('YT ID')];
+                        return {
+                            tag: 'tr', children: [
+                                ...line.map((x, i) => { return { tag: 'td', text: x }; }),
+                                //ytid ? { tag: 'td', children: [ { tag: 'a', href: `youtube.com/watch?v=${ytid}`, target: '_blank', text: 'Open' } ] } : null,
+                            ]
+                        }
+                    }),
+                ]
+            });
+        });
+
+    };
+
+    plugin.beforePageClose = (page) => {
+        plugin.log('YT beforePageClose');
+    };
+
+    plugin.onPageClose = () => {
+        plugin.log('YT onPageClose');
+    };
+
+    plugin.beforeQuit = () => {
+        plugin.log('YT beforeQuit');
+    };
+
+}
+
+module.exports = {
+    getPlugin,
+};
