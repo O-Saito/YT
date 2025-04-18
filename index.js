@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
+const { exec } = require('child_process');
 let data = {};
 
 async function loadDataByCSV(filePath) {
@@ -29,7 +30,7 @@ async function loadDataByCSV(filePath) {
                 data.header.line.push(value);
 
                 let g = data.header.groups[data.header.groups.length - 1];
-                if(!g || g.name != groupName) {
+                if (!g || g.name != groupName) {
                     g = { name: groupName, count: 0 }
                     data.header.groups.push(g);
                 }
@@ -58,11 +59,10 @@ function getPlugin(plugin) {
 
         const csvFolder = path.join(__dirname, 'data');
 
-        // page.addEventListener('change', '#file-csv', (value) => {
-        //     plugin.log(value);
-        // });
+        const files = fs.readdirSync(csvFolder);
+        let selected = files.length > 0 ? files[0] : '';
 
-        loadDataByCSV(path.join(__dirname, 'data.csv')).then(() => {
+        const showData = () => {
             page.loadHtml('#table-header', {
                 fileOrHtml: [
                     {
@@ -89,6 +89,47 @@ function getPlugin(plugin) {
                         }
                     }),
                 ]
+            });
+        }
+
+        if (selected) loadDataByCSV(path.join(csvFolder, selected)).then(showData);
+
+        // page.addEventListener('change', '#file-csv', (value) => {
+        //     plugin.log(value);
+        // });
+
+        page.loadHtml('#ddlCsvFlle', {
+            fileOrHtml: [
+                ...files.map(fileName => {
+                    return {
+                        tag: 'option', value: fileName, text: fileName
+                    }
+                }),
+            ]
+        });
+
+        page.addEventListener('click', '#ddlCsvFlle', (value) => {
+            if (selected == value) return;
+            selected = value;
+
+            page.loadHtml('#table-header', { fileOrHtml: [] });
+            page.loadHtml('#table-body', { fileOrHtml: [] });
+
+            if (selected) loadDataByCSV(path.join(csvFolder, selected)).then(showData);
+        });
+
+        page.addEventListener('click', '#open-folder', () => {
+            exec(`cd /d ${csvFolder} & start .`, (error, stdout, stderr) => {
+                if (error) {
+                    log('Error', error.message);
+                    return;
+                }
+
+                if (stderr) {
+                    log('Stderr', stderr);
+                }
+
+                log('Output', stdout);
             });
         });
 
