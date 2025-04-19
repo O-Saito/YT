@@ -83,8 +83,14 @@ function getPlugin(plugin) {
                         const ytid = line[data.header.line.indexOf('YT ID')];
                         return {
                             tag: 'tr', children: [
+                                // fill up data
                                 ...line.map((x, i) => { return { tag: 'td', text: x }; }),
-                                ytid ? { tag: 'td', children: [ { tag: 'button', class: 'btn btn-info btn-sm youtube-link', 'data-url': `${ytid}`, text: 'Open YT' } ] } : null,
+                                {
+                                    // custom actions
+                                    tag: 'td', children: [
+                                        ytid ? { tag: 'button', class: 'btn btn-info btn-sm youtube-link', 'data-url': `${ytid}`, text: 'Open YT' } : null
+                                    ]
+                                },
                             ]
                         }
                     }),
@@ -118,8 +124,8 @@ function getPlugin(plugin) {
             if (selected) loadDataByCSV(path.join(csvFolder, selected)).then(showData);
         });
 
-        page.addEventListener('click', '.youtube-link', (e, data)=> {
-            require('child_process').exec(`start chrome "https://youtube.com/watch?v=${data.url}"`);
+        page.addEventListener('click', '.youtube-link', (e, data) => {
+            exec(`start chrome "https://youtube.com/watch?v=${data.url}"`);
         });
 
         page.addEventListener('click', '#open-folder', () => {
