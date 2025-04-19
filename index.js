@@ -81,6 +81,7 @@ function getPlugin(plugin) {
                 fileOrHtml: [
                     ...data.body.map(line => {
                         const ytid = line[data.header.line.indexOf('YT ID')];
+                        if(line.length == 0) return;
                         return {
                             tag: 'tr', children: [
                                 // fill up data
