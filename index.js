@@ -84,7 +84,7 @@ function getPlugin(plugin) {
                         return {
                             tag: 'tr', children: [
                                 ...line.map((x, i) => { return { tag: 'td', text: x }; }),
-                                //ytid ? { tag: 'td', children: [ { tag: 'a', href: `youtube.com/watch?v=${ytid}`, target: '_blank', text: 'Open' } ] } : null,
+                                ytid ? { tag: 'td', children: [ { tag: 'button', class: 'btn btn-info btn-sm youtube-link', 'data-url': `${ytid}`, text: 'Open YT' } ] } : null,
                             ]
                         }
                     }),
@@ -116,6 +116,10 @@ function getPlugin(plugin) {
             page.loadHtml('#table-body', { fileOrHtml: [] });
 
             if (selected) loadDataByCSV(path.join(csvFolder, selected)).then(showData);
+        });
+
+        page.addEventListener('click', '.youtube-link', (e, data)=> {
+            require('child_process').exec(`start chrome "https://youtube.com/watch?v=${data.url}"`);
         });
 
         page.addEventListener('click', '#open-folder', () => {
