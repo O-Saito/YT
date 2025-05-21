@@ -86,6 +86,7 @@ function getPlugin(plugin) {
                             tag: 'tr', children: [
                                 // fill up data
                                 ...line.map((x, i) => { return { tag: 'td', text: x }; }),
+                                ...(line.length < data.header.line.length ? (new Array(data.header.line.length - line.length)).fill({ tag: 'td', text: '' }) : []),
                                 {
                                     // custom actions
                                     tag: 'td', children: [
