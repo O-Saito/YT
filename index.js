@@ -2,9 +2,13 @@ const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
 const { exec } = require('child_process');
-let data = {};
 
-async function loadDataByCSV(filePath) {
+const csvFolder = path.join(__dirname, 'data');
+let data = {};
+let log;
+
+async function loadDataByCSV(file) {
+    const filePath = path.join(csvFolder, file);
     data = null;
     const fileStream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({
@@ -14,9 +18,9 @@ async function loadDataByCSV(filePath) {
 
     for await (const line of rl) {
         // Process each line here
-        const values = line.split(',');
         const isHeader = data == null;
         if (isHeader) data = { header: { groups: [], line: [] }, body: [] };
+        const values = line.split(',');
         const body = [];
         for (let i = 0; i < values.length; i++) {
             let value = values[i].trim();
@@ -45,8 +49,60 @@ async function loadDataByCSV(filePath) {
     }
 }
 
-function getPlugin(plugin) {
+async function updateData(file, { lineIndex, lineData }) {
+    const filePath = path.join(csvFolder, file);
+    const tempFile = path.join(csvFolder, 'tmp', file);
+    const bcFolder = path.join(csvFolder, 'bc', new Date().toISOString().replaceAll(':', '-').split('.')[0]);
+    const bcFile = path.join(bcFolder, file);
+    if (fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+    }
 
+    if (!fs.existsSync(bcFolder)) {
+        fs.mkdirSync(bcFolder);
+    }
+
+    const fileStream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    const rl = readline.createInterface({
+        input: fileStream,
+        crlfDelay: Infinity
+    });
+
+    let i = 0;
+    for await (let line of rl) {
+        // Process each line here
+        fs.appendFile(bcFile, `${line}\r\n`, (err) => {
+            if (err) {
+                console.error('TY Erro ao escrever no arquivo:', err);
+            }
+        });
+
+        if (i == lineIndex) {
+            line = lineData;
+        }
+        i++;
+        fs.appendFile(tempFile, `${line}\r\n`, (err) => {
+            if (err) {
+                console.error('TY Erro ao escrever no arquivo:', err);
+            }
+        });
+    }
+
+    log({ lineIndex, i, lineData });
+    if (lineIndex >= i) {
+        fs.appendFile(tempFile, `${lineData}\r\n`, (err) => {
+            if (err) {
+                console.error('TY Erro ao escrever no arquivo:', err);
+            }
+        });
+    }
+
+    //fs.unlinkSync(filePath);
+    fs.renameSync(tempFile, filePath);
+}
+
+function getPlugin(plugin) {
+    log = plugin.log;
     plugin.init = (trayMenu, mainMenu) => {
         plugin.log('YT init');
     };
@@ -57,9 +113,7 @@ function getPlugin(plugin) {
 
     plugin.onPageLoad = (page) => {
 
-        const csvFolder = path.join(__dirname, 'data');
-
-        const files = fs.readdirSync(csvFolder);
+        const files = fs.readdirSync(csvFolder, { withFileTypes: true }).filter(x => x.isFile()).map(x => x.name);
         let selected = files.length > 0 ? files[0] : '';
 
         const showData = () => {
@@ -79,18 +133,23 @@ function getPlugin(plugin) {
             });
             page.loadHtml('#table-body', {
                 fileOrHtml: [
-                    ...data.body.map(line => {
+                    ...data.body.map((line, lineIndex) => {
                         const ytid = line[data.header.line.indexOf('YT ID')];
-                        if(line.length == 0) return;
+                        if (line.length == 0) return;
                         return {
                             tag: 'tr', children: [
                                 // fill up data
-                                ...line.map((x, i) => { return { tag: 'td', text: x }; }),
+                                ...line.map((x, i) => {
+                                    return {
+                                        tag: 'td', class: 'table-content', text: x, /*contenteditable: true, 'data-index': i, 'data-line': lineIndex*/
+                                    };
+                                }),
                                 ...(line.length < data.header.line.length ? (new Array(data.header.line.length - line.length)).fill({ tag: 'td', text: '' }) : []),
                                 {
                                     // custom actions
                                     tag: 'td', children: [
-                                        ytid ? { tag: 'button', class: 'btn btn-info btn-sm youtube-link', 'data-url': `${ytid}`, text: 'Open YT' } : null
+                                        { tag: 'button', class: 'btn btn-secondary btn-sm btn-edit-line', 'data-line': lineIndex, text: 'Editar' },
+                                        (ytid ? { tag: 'button', class: 'btn btn-info btn-sm youtube-link', 'data-url': `${ytid}`, text: 'Abrir YT' } : null)
                                     ]
                                 },
                             ]
@@ -100,11 +159,7 @@ function getPlugin(plugin) {
             });
         }
 
-        if (selected) loadDataByCSV(path.join(csvFolder, selected)).then(showData);
-
-        // page.addEventListener('change', '#file-csv', (value) => {
-        //     plugin.log(value);
-        // });
+        if (selected) loadDataByCSV(selected).then(showData);
 
         page.loadHtml('#ddlCsvFlle', {
             fileOrHtml: [
@@ -123,7 +178,7 @@ function getPlugin(plugin) {
             page.loadHtml('#table-header', { fileOrHtml: [] });
             page.loadHtml('#table-body', { fileOrHtml: [] });
 
-            if (selected) loadDataByCSV(path.join(csvFolder, selected)).then(showData);
+            if (selected) loadDataByCSV(selected).then(showData);
         });
 
         page.addEventListener('click', '.youtube-link', (e, data) => {
@@ -142,6 +197,83 @@ function getPlugin(plugin) {
                 }
 
                 log('Output', stdout);
+            });
+        });
+
+        page.addEventListener('click', '#new-line', () => {
+            const lineIndex = data.body.length;
+            page.modal({
+                title: `Editar linha ${lineIndex}`,
+                body: [
+                    {
+                        tag: 'div', class: 'row', children: [
+                            ...data.header.line.map((r, rIndex) => {
+                                return {
+                                    tag: 'div', tag: 'form-group', children: [
+                                        { tag: 'label', text: r },
+                                        { tag: 'input', name: `modal-input-${rIndex}`, class: 'form-control', value: '' }
+                                    ]
+                                };
+                            })
+                        ]
+                    },
+                ],
+                footer: [
+                    { 'role': 'modal-dismiss' },
+                    { 'tag': 'button', 'type': 'button', 'id': 'btn-save', 'class': 'btn btn-success', 'text': 'Save' },
+                ],
+                on: (event, origin, modalData) => {
+                    plugin.log(`origin: ${origin}`)
+                    plugin.log(`data: ${JSON.stringify(modalData)}`)
+                    if (origin == 'event-close') return;
+                    const line= [];
+                    data.body.push(line);
+                    for (let i = 0; i < data.header.line.length; i++) {
+                        line[i] = modalData[`modal-input-${i}`];
+                    }
+                    plugin.log(`lineIndex: ${lineIndex}/line: ${line.join(',')}`);
+                    updateData(selected, { lineIndex: lineIndex, lineData: line.join(',') });
+                    showData();
+                    event.response(true);
+                },
+            });
+        });
+
+        page.addEventListener('click', '.btn-edit-line', (e, buttonData) => {
+            const line = data.body[buttonData.line];
+            plugin.log(line);
+            page.modal({
+                title: `Editar linha ${buttonData.line}`,
+                body: [
+                    {
+                        tag: 'div', class: 'row', children: [
+                            ...line.map((r, rIndex) => {
+                                return {
+                                    tag: 'div', tag: 'form-group', children: [
+                                        { tag: 'label', text: data.header.line[rIndex] },
+                                        { tag: 'input', name: `modal-input-${rIndex}`, class: 'form-control', value: r }
+                                    ]
+                                };
+                            })
+                        ]
+                    },
+                ],
+                footer: [
+                    { 'role': 'modal-dismiss' },
+                    { 'tag': 'button', 'type': 'button', 'id': 'btn-save', 'class': 'btn btn-success', 'text': 'Save' },
+                ],
+                on: (event, origin, modalData) => {
+                    plugin.log(`origin: ${origin}`)
+                    plugin.log(`data: ${JSON.stringify(modalData)}`);
+                    if (origin == 'event-close') return;
+                    for (let i = 0; i < line.length; i++) {
+                        line[i] = modalData[`modal-input-${i}`];
+                    }
+                    plugin.log(`lineIndex: ${buttonData.line}/line: ${line.join(',')}`);
+                    updateData(selected, { lineIndex: buttonData.line, lineData: line.join(',') });
+                    showData();
+                    event.response(true);
+                },
             });
         });
 
