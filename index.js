@@ -50,17 +50,18 @@ async function loadDataByCSV(file) {
 }
 
 async function updateData(file, { lineIndex, lineData }) {
-    const filePath = path.join(csvFolder, file);
     const tempFolder = path.join(csvFolder, 'tmp');
-    const tempFile = path.join(csvFolder, 'tmp', file);
     const bcFolder = path.join(csvFolder, 'bc', new Date().toISOString().replaceAll(':', '-').split('.')[0]);
+    const filePath = path.join(csvFolder, file);
+    const tempFile = path.join(tempFolder, file);
     const bcFile = path.join(bcFolder, file);
-    if (fs.existsSync(tempFile)) {
-        fs.unlinkSync(tempFile);
-    }
 
     if (!fs.existsSync(tempFolder)) {
         fs.mkdirSync(tempFolder);
+    }
+
+    if (fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
     }
 
     if (!fs.existsSync(bcFolder)) {
